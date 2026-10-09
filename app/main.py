@@ -6,7 +6,9 @@ import sqlite3
 import uuid
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from app.chunking import create_chunks
 from app.config import Settings
@@ -18,6 +20,8 @@ from app.semantic_search import SemanticSearchService
 from app.storage import DocumentStore
 
 ALLOWED_EXTENSIONS = {"pdf", "docx", "txt"}
+UI_DIR = Path(__file__).with_name("static")
+RESULTS_DIR = Path(__file__).resolve().parents[1] / "evaluation" / "results"
 
 def safe_filename(filename: str | None) -> str:
     """Keep a plain basename and remove characters unsafe for display/storage."""
@@ -42,10 +46,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     lexical_search = LexicalSearchService(store)
     hybrid_search = HybridSearchService(semantic_search, lexical_search)
     app = FastAPI(title="Intelligent Document Retrieval API", version="0.4.0")
+    app.mount("/static", StaticFiles(directory=UI_DIR), name="static")
+    app.mount("/evaluation/results", StaticFiles(directory=RESULTS_DIR), name="evaluation-results")
     app.state.document_store = store
     app.state.semantic_search = semantic_search
     app.state.lexical_search = lexical_search
     app.state.hybrid_search = hybrid_search
+
+    @app.get("/", include_in_schema=False)
+    def frontend():
+        return FileResponse(UI_DIR / "index.html")
 
     @app.exception_handler(sqlite3.IntegrityError)
     async def integrity_error_handler(request: Request, exc: sqlite3.IntegrityError):

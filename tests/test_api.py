@@ -32,3 +32,15 @@ def test_upload_validation_and_duplicate(tmp_path):
 def test_detail_returns_404_for_unknown_document(tmp_path):
     with client_for(tmp_path) as client:
         assert client.get("/documents/not-a-real-id").status_code == 404
+
+def test_frontend_and_saved_reports_are_served(tmp_path):
+    with client_for(tmp_path) as client:
+        page = client.get("/")
+        assert page.status_code == 200
+        assert "Search your library" in page.text
+        assert client.get("/static/style.css").status_code == 200
+        assert client.get("/static/app.js").status_code == 200
+        report = client.get("/evaluation/results/evaluation.json")
+        assert report.status_code == 200
+        assert report.json()["per_question"]
+        assert client.get("/evaluation/results/per_question.csv").status_code == 200

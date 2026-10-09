@@ -16,6 +16,15 @@ Milestones 1–5 provide a FastAPI service for document ingestion, semantic and 
 
 The API is at http://127.0.0.1:8000 and interactive docs are at /docs. SQLite defaults to data/documents.db. Override DATABASE_PATH, MAX_UPLOAD_BYTES, CHUNK_SIZE, or CHUNK_OVERLAP through environment variables.
 
+## Web interface
+
+From the project root in Windows PowerShell, activate the environment and start the app:
+
+    .\.venv\Scripts\Activate.ps1
+    python -m uvicorn app.main:app --reload
+
+Open http://127.0.0.1:8000/ for the interface. Upload PDF, DOCX, and TXT files; browse document metadata and chunks; search with Semantic, BM25/Lexical, or Hybrid retrieval; and view the saved evaluation metrics. The JSON and per-question CSV reports are linked in the evaluation section. The page displays existing results and does not rerun evaluation.
+
 ## Tests
 
     python -m pytest
