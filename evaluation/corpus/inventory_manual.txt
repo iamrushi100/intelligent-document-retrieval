@@ -1,0 +1,1 @@
+﻿The inventory endpoint GET /v2/items/{item_id} returns stock status and warehouse location. Use the HTTP 429 Retry-After header for rate limits. Item identifiers follow the format SKU- followed by eight digits.

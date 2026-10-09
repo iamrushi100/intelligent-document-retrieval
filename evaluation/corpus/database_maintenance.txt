@@ -1,0 +1,1 @@
+﻿PostgreSQL production backups run nightly at 01:30 UTC. Retain daily snapshots for 30 days and monthly snapshots for one year. Restore drills are performed quarterly. Index vacuum runs after bulk imports.

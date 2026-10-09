@@ -1,0 +1,1 @@
+﻿The Python service uses pytest for automated checks. Run python -m pytest from the repository root. Format code with Ruff. Local configuration is loaded from .env; never commit secrets.

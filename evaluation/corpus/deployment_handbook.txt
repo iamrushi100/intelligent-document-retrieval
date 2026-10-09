@@ -1,0 +1,1 @@
+﻿Release artifacts are identified by build tag BUILD-2026-04. Deployments use blue-green switching. Run smoke tests against the standby environment before changing traffic. Roll back if error rate exceeds 2% for five minutes.

@@ -1,0 +1,1 @@
+﻿Every employee account must use multifactor authentication (MFA). Recovery codes are stored offline. Privileged accounts are reviewed every 30 days. Passwords must contain at least 14 characters.

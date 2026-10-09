@@ -1,0 +1,1 @@
+﻿For severity SEV-1, page the on-call incident commander immediately. Acknowledge within 5 minutes. Preserve application logs before restarting affected services. The status page is updated every 15 minutes.

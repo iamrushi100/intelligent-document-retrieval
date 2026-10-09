@@ -1,0 +1,1 @@
+﻿Service REL-17 retries failed requests up to four times with exponential backoff. Initial delay is 250 milliseconds and doubles after each retry. TLS certificates are renewed 21 days before expiration.
