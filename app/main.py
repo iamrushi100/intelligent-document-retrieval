@@ -1,6 +1,7 @@
 ﻿"""FastAPI endpoints for health checks, ingestion, and retrieval."""
 from datetime import datetime, timezone
 from hashlib import sha256
+import os
 import re
 import sqlite3
 import uuid
@@ -9,10 +10,18 @@ from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Uploa
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from pydantic import BaseModel, Field
 
 from app.chunking import create_chunks
 from app.config import Settings
 from app.embeddings import MODEL_NAME
+from app.generation import (
+    MockTextGenerator,
+    OpenAITextGenerator,
+    RagGenerationService,
+    TextGenerationProviderError,
+    TextGenerator,
+)
 from app.hybrid_search import HybridSearchService
 from app.lexical_search import LexicalSearchService, TOKENIZER_VERSION
 from app.parsing import DocumentParseError, extract_text
@@ -22,6 +31,13 @@ from app.storage import DocumentStore
 ALLOWED_EXTENSIONS = {"pdf", "docx", "txt"}
 UI_DIR = Path(__file__).with_name("static")
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "evaluation" / "results"
+
+
+class AskRequest(BaseModel):
+    """Question and retrieval limit for the end-to-end RAG endpoint."""
+
+    question: str = Field(min_length=1, max_length=2000)
+    top_k: int = Field(default=5, ge=1, le=100)
 
 def safe_filename(filename: str | None) -> str:
     """Keep a plain basename and remove characters unsafe for display/storage."""
@@ -36,6 +52,19 @@ def search_parameters(q: str = Query(min_length=1, max_length=2000),
         raise HTTPException(status_code=422, detail="Query must contain non-whitespace text.")
     return q, top_k
 
+
+def create_text_generator(settings: Settings) -> TextGenerator:
+    """Select the configured generator, defaulting to the local mock."""
+    provider = settings.text_generator_provider.strip().lower()
+    if provider == "mock":
+        return MockTextGenerator()
+    if provider == "openai":
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("TEXT_GENERATOR_PROVIDER=openai requires OPENAI_API_KEY.")
+        return OpenAITextGenerator(api_key=api_key, model=settings.openai_model)
+    raise ValueError("TEXT_GENERATOR_PROVIDER must be 'mock' or 'openai'.")
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_environment()
     if settings.chunk_size < 1 or not 0 <= settings.chunk_overlap < settings.chunk_size:
@@ -45,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     semantic_search = SemanticSearchService(store)
     lexical_search = LexicalSearchService(store)
     hybrid_search = HybridSearchService(semantic_search, lexical_search)
+    rag_generation = RagGenerationService(hybrid_search, create_text_generator(settings))
     app = FastAPI(title="Intelligent Document Retrieval API", version="0.4.0")
     app.mount("/static", StaticFiles(directory=UI_DIR), name="static")
     app.mount("/evaluation/results", StaticFiles(directory=RESULTS_DIR), name="evaluation-results")
@@ -52,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.semantic_search = semantic_search
     app.state.lexical_search = lexical_search
     app.state.hybrid_search = hybrid_search
+    app.state.rag_generation = rag_generation
 
     @app.get("/", include_in_schema=False)
     def frontend():
@@ -123,6 +154,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"query": query, "top_k": top_k,
                 "rrf_constant": hybrid_search.rrf_constant,
                 "results": hybrid_search.search(query, top_k)}
+
+    @app.post("/ask")
+    def ask(request: AskRequest):
+        if not request.question.strip():
+            raise HTTPException(status_code=422, detail="Question must contain non-whitespace text.")
+        try:
+            result = rag_generation.answer(request.question, top_k=request.top_k)
+        except TextGenerationProviderError:
+            raise HTTPException(
+                status_code=502,
+                detail="Text generation provider request failed.",
+            ) from None
+        return {"question": request.question, **result}
 
     return app
 

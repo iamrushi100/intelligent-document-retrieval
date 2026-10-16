@@ -105,7 +105,7 @@ class DocumentStore:
         """Load aligned source metadata and vectors for exact semantic scoring."""
         with self._connection() as connection:
             rows = connection.execute("""
-                SELECT c.id AS chunk_id, c.document_name, c.text, c.page_number, c.section, e.vector
+                SELECT c.id AS chunk_id, c.document_id, c.document_name, c.text, c.page_number, c.section, e.vector
                 FROM chunks c JOIN chunk_embeddings e ON e.chunk_id = c.id
                 WHERE e.model_name = ? ORDER BY c.rowid
             """, (model_name,)).fetchall()
@@ -137,7 +137,7 @@ class DocumentStore:
         """Load token lists and matching source metadata for the BM25 corpus."""
         with self._connection() as connection:
             rows = connection.execute("""
-                SELECT c.id AS chunk_id, c.document_name, c.text, c.page_number, c.section, l.terms
+                SELECT c.id AS chunk_id, c.document_id, c.document_name, c.text, c.page_number, c.section, l.terms
                 FROM chunks c JOIN lexical_chunks l ON l.chunk_id = c.id
                 WHERE l.tokenizer_version = ? ORDER BY c.rowid
             """, (tokenizer_version,)).fetchall()

@@ -47,6 +47,7 @@ class LexicalSearchService:
         ranked = sorted(matching, key=lambda i: float(scores[i]), reverse=True)[:top_k]
         return [{
             "document_name": rows[i]["document_name"],
+            "document_id": rows[i]["document_id"],
             "chunk_id": rows[i]["chunk_id"],
             "text": rows[i]["text"],
             "page_number": rows[i]["page_number"],

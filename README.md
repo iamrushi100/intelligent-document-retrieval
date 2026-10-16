@@ -1,6 +1,6 @@
 # Intelligent Document Retrieval & Evaluation Platform
 
-Milestones 1–5 provide a FastAPI service for document ingestion, semantic and BM25 retrieval, hybrid rank fusion, and a reproducible retrieval evaluation harness.
+Milestones 1–6 provide a FastAPI service for document ingestion, semantic and BM25 retrieval, hybrid rank fusion, a reproducible retrieval evaluation harness, and a local RAG flow with mocked generation.
 
 ## Requirements and setup
 
@@ -66,6 +66,55 @@ RRF uses ranks rather than raw BM25 or cosine scores, since those score scales a
 The configured constant is k=60 and rank positions begin at 1. For example, a chunk ranked 1st by semantic and 4th by lexical receives 1/61 + 1/64. Another chunk ranked 2nd by both receives 1/62 + 1/62, which is slightly higher and therefore ranks first. Missing ranks contribute zero. Ties sort by best component rank and then chunk ID, making ordering repeatable.
 
 RRF helps combine complementary evidence: semantic search can find related wording, while BM25 can strongly match exact identifiers. It does not prove the combined method improves retrieval; that requires a later evaluation milestone. The endpoint requests top_k candidates from each method, so its pool is at most 2 × top_k chunks before fusion.
+
+## End-to-end local RAG API
+
+The local RAG flow is:
+
+    document upload → parsing → chunking → indexing → hybrid retrieval → context construction → generation → source metadata
+
+Use `POST /ask` with a JSON body containing a non-empty question. `top_k` is optional and defaults to 5 (valid range: 1–100):
+
+    {
+      "question": "How often should credentials rotate?",
+      "top_k": 5
+    }
+
+The response contains the question, answer, and a `sources` list. Each source includes its `chunk_id`, `document_id`, `filename`, and `retrieval_score`.
+
+`/ask` reuses the existing hybrid retrieval service and the provider-independent generation abstraction. It uses `MockTextGenerator` by default; no API key or external LLM call is required in that configuration. To opt into the OpenAI adapter, set `TEXT_GENERATOR_PROVIDER=openai` and `OPENAI_API_KEY`; optionally set `OPENAI_MODEL` (default: `gpt-4o-mini`). The mock echoes retrieved context for local pipeline checks and does not demonstrate LLM answer quality. Tests use a fake provider client and never call the external API.
+
+The verified integration test uploads a temporary TXT file through `POST /documents` containing a unique PX-417 archive-retention fact, then asks about that fact through `POST /ask`. It verifies that the relevant chunk is retrieved, the answer contains “43 days,” and the returned source identifies the uploaded document with a valid chunk ID, document ID, and positive retrieval score. The test exercises upload, parsing, chunking, indexing, hybrid retrieval, context construction, mocked generation, and source reporting end to end.
+
+Run the full suite with:
+
+    python -m pytest
+
+Current verified result: **62 passed**. Retrieval is exercised end to end; generation remains mocked by default. The OpenAI adapter is opt-in and tests use fake clients, so the test suite makes no live provider calls.
+
+### Optional OpenAI setup on macOS
+
+From the project root, create a virtual environment, install the updated dependencies, and opt into the OpenAI provider. The key is entered silently at the prompt and is not saved in a file or shell command history:
+
+    python3 -m venv .venv
+    source .venv/bin/activate
+    python -m pip install --upgrade pip
+    python -m pip install -e ".[dev]"
+    export TEXT_GENERATOR_PROVIDER=openai
+    export OPENAI_MODEL=gpt-4o-mini
+    read -s "OPENAI_API_KEY?OpenAI API key: "
+    echo
+    export OPENAI_API_KEY
+    python -m uvicorn app.main:app --reload
+
+In a second Terminal window, upload a small test document and ask about its unique fact:
+
+    printf '%s\n' 'Local verification code LCL-930 has a retention period of 17 days.' > /tmp/project1-openai-smoke.txt
+    curl -sS -X POST "http://127.0.0.1:8000/documents" -F "file=@/tmp/project1-openai-smoke.txt"
+    curl -sS -X POST "http://127.0.0.1:8000/ask" -H "Content-Type: application/json" -d '{"question":"What is the retention period for LCL-930?","top_k":5}'
+
+The `/ask` call makes a real provider request only when OpenAI is explicitly selected and a key is available. Provider failures return a generic 502 response without SDK exception details. No `.env` file is needed or created.
+
 ## Semantic search concepts
 
 An embedding is a list of numbers that represents the meaning of a piece of text. The all-MiniLM-L6-v2 model creates 384-number vectors for chunks and questions. Cosine similarity compares vector direction; after normalization, a dot product gives that score. Semantic search calculates a score for every stored chunk and returns the top K. Its exact scan is simple for a small corpus, while its work grows linearly with the number of chunks.
@@ -82,8 +131,9 @@ Vectors are stored in SQLite as float32 BLOBs, mapped by chunk ID and tagged wit
 - app/lexical_search.py tokenizes chunks, catches up missing term rows, and scores the corpus with BM25Okapi. tokenize preserves selected identifier punctuation; prepare_terms creates index data; search ranks matching chunks. Interview concepts: term frequency, IDF, length normalization, and lexical versus semantic search.
 - app/evaluation/metrics.py calculates Recall@K, Precision@K, and MRR@K with shared duplicate and unanswerable conventions. app/evaluation/dataset.py validates labels against corpus files; app/evaluation/runner.py builds the corpus and runs the experiment; app/evaluation/experiment.py evaluates cases and writes deterministic JSON/CSV. Interview concepts: metric denominators, macro averages, and evaluation bias.
 - app/hybrid_search.py contains fuse_rankings, which adds reciprocal contributions from one-based ranks, deduplicates by chunk ID, and sorts ties deterministically. HybridSearchService calls both existing search services. Interview concepts: rank fusion and why raw score scales should not be mixed.
+- app/rag.py normalizes retrieved chunks and formats source-labeled context; app/generation.py defines the TextGenerator protocol, MockTextGenerator, OpenAITextGenerator, and RagGenerationService. Interview concepts: context assembly, source attribution, and provider-independent interfaces.
 - app/storage.py owns the SQLite schema and transactions. It stores chunks alongside semantic vectors and lexical terms, each tied to chunk IDs. Interview concepts: foreign keys, BLOB/JSON storage, transactions, and index consistency.
-- app/main.py defines health, upload, list, detail, semantic search, and lexical search routes. A shared search_parameters dependency applies the same validation to both search modes. Interview concepts: API validation and separation of route, service, and storage responsibilities.
+- app/main.py defines health, upload, list, detail, semantic search, lexical search, hybrid search, and `/ask` routes. A shared search_parameters dependency applies the same validation to search routes. Interview concepts: API validation and separation of route, service, and storage responsibilities.
 - app/models.py defines parsed-page and chunk records shared between modules. Interview concepts: dataclasses and type hints.
 
 ## Retrieval evaluation
@@ -136,4 +186,4 @@ The experiment runner and metric code live in app/evaluation. Dataset source lab
 5. What can bias this experiment? — Questions and labels come from a tiny corpus authored for this project, so wording, topic coverage, and relevance judgments may favor the tested examples.
 ## Current scope and limitations
 
-Reranking, answer generation, deletion endpoints, and a frontend remain later milestones. The evaluation harness is implemented, with results limited by its small, curated dataset. DOCX/TXT page and section fields stay unset when unavailable, and scanned PDFs need OCR. The next useful step is a measured reranking experiment using this harness. Hybrid scores depend on the selected RRF constant and candidate cutoff; they are ranking signals rather than probabilities. BM25 tokenization is intentionally simple and English-oriented; exact identifiers with the listed separators are retained, but specialized tokenization may be needed for other languages or domain-specific syntax.
+An opt-in OpenAI adapter is implemented; `/ask` defaults to the deterministic mock, and automated tests use a fake provider rather than making live calls. Reranking and deletion endpoints remain future milestones. The evaluation harness is implemented, with results limited by its small, curated dataset. DOCX/TXT page and section fields stay unset when unavailable, and scanned PDFs need OCR. The next useful step is a measured reranking experiment using this harness. Hybrid scores depend on the selected RRF constant and candidate cutoff; they are ranking signals rather than probabilities. BM25 tokenization is intentionally simple and English-oriented; exact identifiers with the listed separators are retained, but specialized tokenization may be needed for other languages or domain-specific syntax.

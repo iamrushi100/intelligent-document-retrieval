@@ -31,7 +31,7 @@ def fuse_rankings(
             if chunk_id not in candidates:
                 candidates[chunk_id] = {
                     key: result.get(key) for key in
-                    ("document_name", "chunk_id", "text", "page_number", "section")
+                    ("document_id", "document_name", "chunk_id", "text", "page_number", "section")
                 }
                 ranks[chunk_id] = {"semantic_rank": None, "lexical_rank": None}
                 scores[chunk_id] = 0.0

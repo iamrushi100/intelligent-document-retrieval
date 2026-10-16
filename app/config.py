@@ -9,6 +9,8 @@ class Settings:
     max_upload_bytes: int = 10 * 1024 * 1024
     chunk_size: int = 1000
     chunk_overlap: int = 150
+    text_generator_provider: str = "mock"
+    openai_model: str = "gpt-4o-mini"
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -18,4 +20,6 @@ class Settings:
             max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024))),
             chunk_size=int(os.getenv("CHUNK_SIZE", "1000")),
             chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "150")),
+            text_generator_provider=os.getenv("TEXT_GENERATOR_PROVIDER", "mock"),
+            openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         )

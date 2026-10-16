@@ -61,6 +61,7 @@ class SemanticSearchService:
         order = np.argsort(-scores, kind="stable")[:top_k]
         return [{
             "document_name": rows[i]["document_name"],
+            "document_id": rows[i]["document_id"],
             "chunk_id": rows[i]["chunk_id"],
             "text": rows[i]["text"],
             "page_number": rows[i]["page_number"],
