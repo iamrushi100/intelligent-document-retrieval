@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: intelligent-document-retrieval
+    runtime: python
+    plan: 1c-2g
+    numInstances: 1
+    buildCommand: pip install .
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: document-data
+      mountPath: /var/data
+    envVars:
+      - key: DATABASE_PATH
+        value: /var/data/documents.db
+      - key: TEXT_GENERATOR_PROVIDER
+        value: mock
